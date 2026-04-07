@@ -3,44 +3,80 @@
 <head>
     <title>FPS CHAOS</title>
     <style>
-        html, body { margin:0; overflow:hidden; }
-        canvas { display:block; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
     </style>
 </head>
 <body>
-<script src="https://cdn.babylonjs.com/babylon.js"></script>
-<script src="/socket.io/socket.io.js"></script>
 
 <canvas id="renderCanvas"></canvas>
+
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 
 <script>
 const socket = io();
 
+// SETUP
 const canvas = document.getElementById("renderCanvas");
 const engine = new BABYLON.Engine(canvas, true);
 const scene = new BABYLON.Scene(engine);
 
+// CAMERA (FPS)
 const camera = new BABYLON.UniversalCamera("cam",
-    new BABYLON.Vector3(0,2,-5), scene);
+    new BABYLON.Vector3(0, 2, -5), scene);
 
 camera.attachControl(canvas, true);
+camera.speed = 0.5;
+camera.angularSensibility = 4000;
 
+// WASD controls
+camera.keysUp.push(87);    // W
+camera.keysDown.push(83);  // S
+camera.keysLeft.push(65);  // A
+camera.keysRight.push(68); // D
+
+// POINTER LOCK (click to lock mouse)
+canvas.addEventListener("click", () => {
+    canvas.requestPointerLock();
+});
+
+// LIGHT
 const light = new BABYLON.HemisphericLight("light",
-    new BABYLON.Vector3(0,1,0), scene);
+    new BABYLON.Vector3(0, 1, 0), scene);
 
+// GROUND
+const ground = BABYLON.MeshBuilder.CreateGround("ground", {
+    width: 50,
+    height: 50
+}, scene);
+
+// SIMPLE MATERIAL
+const groundMat = new BABYLON.StandardMaterial("mat", scene);
+groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.2);
+ground.material = groundMat;
+
+// PLAYERS
 let playerMeshes = {};
 
 socket.on("currentPlayers", (players) => {
-    for (let id in players) {
-        addPlayer(id, players[id]);
-    }
+    for (let id in players) addPlayer(id, players[id]);
 });
 
 socket.on("updatePlayers", (players) => {
     for (let id in players) {
-        if (!playerMeshes[id]) {
-            addPlayer(id, players[id]);
-        }
+        if (!playerMeshes[id]) addPlayer(id, players[id]);
+
         playerMeshes[id].position.set(
             players[id].x,
             players[id].y,
@@ -55,8 +91,10 @@ function addPlayer(id, data) {
     playerMeshes[id] = box;
 }
 
+// SEND POSITION
 scene.onBeforeRenderObservable.add(() => {
     const pos = camera.position;
+
     socket.emit("move", {
         x: pos.x,
         y: pos.y,
@@ -64,7 +102,16 @@ scene.onBeforeRenderObservable.add(() => {
     });
 });
 
-engine.runRenderLoop(() => scene.render());
+// RESIZE FIX (IMPORTANT)
+window.addEventListener("resize", () => {
+    engine.resize();
+});
+
+// LOOP
+engine.runRenderLoop(() => {
+    scene.render();
+});
 </script>
+
 </body>
 </html>
