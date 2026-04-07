@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FPS CHAOS</title>
+    <title>FPS SPAWN ROOM</title>
     <style>
         html, body {
             width: 100%;
@@ -15,10 +15,25 @@
             height: 100%;
             display: block;
         }
+
+        /* CROSSHAIR */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            margin-left: -5px;
+            margin-top: -5px;
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
+<div id="crosshair"></div>
 <canvas id="renderCanvas"></canvas>
 
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
@@ -27,46 +42,150 @@
 <script>
 const socket = io();
 
-// SETUP
 const canvas = document.getElementById("renderCanvas");
 const engine = new BABYLON.Engine(canvas, true);
 const scene = new BABYLON.Scene(engine);
 
-// CAMERA (FPS)
+// ===== CAMERA (FPS) =====
 const camera = new BABYLON.UniversalCamera("cam",
-    new BABYLON.Vector3(0, 2, -5), scene);
+    new BABYLON.Vector3(0, 2, 0), scene);
 
 camera.attachControl(canvas, true);
+
 camera.speed = 0.5;
-camera.angularSensibility = 4000;
+camera.angularSensibility = 3000;
 
-// WASD controls
-camera.keysUp.push(87);    // W
-camera.keysDown.push(83);  // S
-camera.keysLeft.push(65);  // A
-camera.keysRight.push(68); // D
+camera.keysUp = [87];
+camera.keysDown = [83];
+camera.keysLeft = [65];
+camera.keysRight = [68];
 
-// POINTER LOCK (click to lock mouse)
+scene.gravity = new BABYLON.Vector3(0, -0.25, 0);
+scene.collisionsEnabled = true;
+
+camera.applyGravity = true;
+camera.checkCollisions = true;
+camera.ellipsoid = new BABYLON.Vector3(1, 1.8, 1);
+
 canvas.addEventListener("click", () => {
     canvas.requestPointerLock();
 });
 
-// LIGHT
+// ===== LIGHTING =====
 const light = new BABYLON.HemisphericLight("light",
     new BABYLON.Vector3(0, 1, 0), scene);
 
-// GROUND
-const ground = BABYLON.MeshBuilder.CreateGround("ground", {
-    width: 50,
-    height: 50
+// nicer environment lighting
+scene.environmentTexture = BABYLON.CubeTexture.CreateFromPrefilteredData(
+    "https://playground.babylonjs.com/textures/environment.env",
+    scene
+);
+
+// ===== MATERIALS =====
+const floorMat = new BABYLON.StandardMaterial("floorMat", scene);
+floorMat.diffuseTexture = new BABYLON.Texture(
+    "https://assets.babylonjs.com/environments/floor.png",
+    scene
+);
+floorMat.diffuseTexture.uScale = 6;
+floorMat.diffuseTexture.vScale = 6;
+
+const wallMat = new BABYLON.StandardMaterial("wallMat", scene);
+wallMat.diffuseTexture = new BABYLON.Texture(
+    "https://assets.babylonjs.com/environments/bricktile.jpg",
+    scene
+);
+wallMat.diffuseTexture.uScale = 4;
+wallMat.diffuseTexture.vScale = 2;
+
+const ceilingMat = new BABYLON.StandardMaterial("ceilMat", scene);
+ceilingMat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.85);
+
+// ===== BUILDING (SPAWN ROOM) =====
+
+// floor
+const floor = BABYLON.MeshBuilder.CreateGround("floor", {
+    width: 20,
+    height: 20
+}, scene);
+floor.material = floorMat;
+floor.checkCollisions = true;
+
+// ceiling
+const ceiling = BABYLON.MeshBuilder.CreateGround("ceiling", {
+    width: 20,
+    height: 20
+}, scene);
+ceiling.position.y = 6;
+ceiling.rotation.x = Math.PI;
+ceiling.material = ceilingMat;
+ceiling.checkCollisions = true;
+
+// walls
+function makeWall(w, h, d, x, y, z) {
+    const wall = BABYLON.MeshBuilder.CreateBox("wall", {
+        width: w,
+        height: h,
+        depth: d
+    }, scene);
+
+    wall.position.set(x, y, z);
+    wall.material = wallMat;
+    wall.checkCollisions = true;
+}
+
+// back wall
+makeWall(20, 6, 1, 0, 3, -10);
+
+// left wall
+makeWall(1, 6, 20, -10, 3, 0);
+
+// right wall
+makeWall(1, 6, 20, 10, 3, 0);
+
+// front wall WITH DOOR GAP
+makeWall(7, 6, 1, -6.5, 3, 10);
+makeWall(7, 6, 1, 6.5, 3, 10);
+makeWall(6, 2, 1, 0, 5, 10); // top of doorway
+
+// ===== OUTSIDE GROUND =====
+const outside = BABYLON.MeshBuilder.CreateGround("out", {
+    width: 200,
+    height: 200
 }, scene);
 
-// SIMPLE MATERIAL
-const groundMat = new BABYLON.StandardMaterial("mat", scene);
-groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.2);
-ground.material = groundMat;
+outside.position.y = -0.01;
+outside.checkCollisions = true;
 
-// PLAYERS
+const outsideMat = new BABYLON.StandardMaterial("outMat", scene);
+outsideMat.diffuseTexture = new BABYLON.Texture(
+    "https://assets.babylonjs.com/environments/grass.jpg",
+    scene
+);
+outsideMat.diffuseTexture.uScale = 40;
+outsideMat.diffuseTexture.vScale = 40;
+
+outside.material = outsideMat;
+
+// ===== SKYBOX =====
+const skybox = BABYLON.MeshBuilder.CreateBox("skyBox", {size:1000}, scene);
+
+const skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
+skyboxMaterial.backFaceCulling = false;
+
+skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture(
+    "https://playground.babylonjs.com/textures/skybox",
+    scene
+);
+
+skyboxMaterial.reflectionTexture.coordinatesMode =
+    BABYLON.Texture.SKYBOX_MODE;
+
+skyboxMaterial.disableLighting = true;
+
+skybox.material = skyboxMaterial;
+
+// ===== MULTIPLAYER =====
 let playerMeshes = {};
 
 socket.on("currentPlayers", (players) => {
@@ -86,12 +205,22 @@ socket.on("updatePlayers", (players) => {
 });
 
 function addPlayer(id, data) {
-    const box = BABYLON.MeshBuilder.CreateBox("p", {}, scene);
+    const box = BABYLON.MeshBuilder.CreateBox("player", {size:2}, scene);
     box.position.set(data.x, data.y, data.z);
+
+    const mat = new BABYLON.StandardMaterial("mat", scene);
+    mat.diffuseColor = new BABYLON.Color3(
+        Math.random(),
+        Math.random(),
+        Math.random()
+    );
+
+    box.material = mat;
+
     playerMeshes[id] = box;
 }
 
-// SEND POSITION
+// ===== SYNC =====
 scene.onBeforeRenderObservable.add(() => {
     const pos = camera.position;
 
@@ -102,12 +231,12 @@ scene.onBeforeRenderObservable.add(() => {
     });
 });
 
-// RESIZE FIX (IMPORTANT)
+// ===== FIX RESIZE =====
 window.addEventListener("resize", () => {
     engine.resize();
 });
 
-// LOOP
+// ===== LOOP =====
 engine.runRenderLoop(() => {
     scene.render();
 });
