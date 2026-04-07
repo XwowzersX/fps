@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FPS CHAOS</title>
+    <style>
+        html, body { margin:0; overflow:hidden; }
+        canvas { display:block; }
+    </style>
+</head>
+<body>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+
+<canvas id="renderCanvas"></canvas>
+
+<script>
+const socket = io();
+
+const canvas = document.getElementById("renderCanvas");
+const engine = new BABYLON.Engine(canvas, true);
+const scene = new BABYLON.Scene(engine);
+
+const camera = new BABYLON.UniversalCamera("cam",
+    new BABYLON.Vector3(0,2,-5), scene);
+
+camera.attachControl(canvas, true);
+
+const light = new BABYLON.HemisphericLight("light",
+    new BABYLON.Vector3(0,1,0), scene);
+
+let playerMeshes = {};
+
+socket.on("currentPlayers", (players) => {
+    for (let id in players) {
+        addPlayer(id, players[id]);
+    }
+});
+
+socket.on("updatePlayers", (players) => {
+    for (let id in players) {
+        if (!playerMeshes[id]) {
+            addPlayer(id, players[id]);
+        }
+        playerMeshes[id].position.set(
+            players[id].x,
+            players[id].y,
+            players[id].z
+        );
+    }
+});
+
+function addPlayer(id, data) {
+    const box = BABYLON.MeshBuilder.CreateBox("p", {}, scene);
+    box.position.set(data.x, data.y, data.z);
+    playerMeshes[id] = box;
+}
+
+scene.onBeforeRenderObservable.add(() => {
+    const pos = camera.position;
+    socket.emit("move", {
+        x: pos.x,
+        y: pos.y,
+        z: pos.z
+    });
+});
+
+engine.runRenderLoop(() => scene.render());
+</script>
+</body>
+</html>
